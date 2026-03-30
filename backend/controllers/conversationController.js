@@ -1,7 +1,7 @@
 const Conversation = require('../models/Conversation');
 const Report = require('../models/Report');
 const { encrypt } = require('../utils/encryption');
-const { analyzeGrievance } = require('../services/aiService');
+const { analyzeGrievance } = require('../services/aiServices');
 
 // @desc    Send a message (Anonymous or Admin)
 exports.sendMessage = async (req, res) => {

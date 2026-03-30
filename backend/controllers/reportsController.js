@@ -2,6 +2,7 @@ const Report = require('../models/Report');
 const crypto = require('crypto');
 const { encrypt } = require('../utils/encryption'); 
 const { analyzeGrievance } = require('../services/aiServices');
+const Evidence = require('../models/Evidence');
 
 // @desc    Submit an anonymous report with AI Analysis & Encryption
 exports.submitReport = async (req, res) => {
@@ -105,6 +106,31 @@ exports.getAdminAnalytics = async (req, res) => {
             success: true,
             total: totalReports,
             categories: stats
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+};
+
+exports.getAdminReports = async (req, res) => {
+    try {
+        // Enforce Multi-Tenant Data Isolation Strategy [cite: 620, 621]
+        const reports = await Report.find({ organizationId: req.organizationId })
+            .sort({ createdAt: -1 });
+
+        // Fetch evidence linked to these reports [cite: 653]
+        const reportsWithEvidence = await Promise.all(reports.map(async (report) => {
+            const evidence = await Evidence.find({ reportId: report._id });
+            return {
+                ...report._doc,
+                evidence // Attach the scrubbed evidence array to each report object
+            };
+        }));
+
+        res.status(200).json({
+            success: true,
+            count: reportsWithEvidence.length,
+            data: reportsWithEvidence
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
