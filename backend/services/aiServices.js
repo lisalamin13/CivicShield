@@ -53,3 +53,17 @@ exports.analyzeGrievance = async (grievanceText) =>
         };
     }
 };
+
+// --- New function for the Ethics Advisor ---
+exports.generateAIResponse = async (prompt) => {
+    try {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        
+        // Return the plain text advice for the whistleblower
+        return response.text(); 
+    } catch (error) {
+        console.error("ETHICS ADVISOR ERROR:", error.message);
+        return "I'm sorry, I'm having trouble connecting to the institutional policy engine right now. Please try again later.";
+    }
+};

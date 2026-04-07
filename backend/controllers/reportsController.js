@@ -12,7 +12,7 @@ exports.submitReport = async (req, res) => {
             return res.status(400).json({ success: false, error: "Please provide grievance content." });
         }
 
-        // 1. Generate a unique 16-digit Tracking ID
+        // 1. Generate a unique 16-digit Tracking ID (8 bytes = 16 hex chars)
         const trackingId = crypto.randomBytes(8).toString('hex').toUpperCase();
 
         // 2. Perform AI Analysis (Gemini 3 Flash)
@@ -21,7 +21,7 @@ exports.submitReport = async (req, res) => {
         // 3. Encrypt the original content for Absolute Anonymity
         const secureContent = encrypt(content); 
 
-        // 4. Prepare the report object - Mapped to match your RAW AI RESPONSE
+        // 4. Prepare the report object - Matches your DB Screenshot
         const reportData = {
             organizationId: req.organizationId, 
             encryptedContent: secureContent,
@@ -49,7 +49,7 @@ exports.submitReport = async (req, res) => {
 // @desc    Get all reports for an organization, sorted by Red Flag Score
 exports.getOrgReports = async (req, res) => {
     try {
-        // We added .sort({ redFlagScore: -1 }) so Admins see urgent cases first
+        // Admins see urgent cases first based on Red Flag Score
         const reports = await Report.find({ organizationId: req.organizationId })
             .sort({ redFlagScore: -1 });
 
@@ -63,12 +63,13 @@ exports.getOrgReports = async (req, res) => {
     }
 };
 
+// @desc    Track report status using the 16-digit Tracking ID
 exports.getReportStatus = async (req, res) => {
     try {
         const report = await Report.findOne({ 
             trackingId: req.params.trackingId,
             organizationId: req.organizationId 
-        }).select('status createdAt aiSummary'); 
+        }).select('status createdAt aiSummary category redFlagScore'); 
 
         if (!report) {
             return res.status(404).json({ success: false, error: 'Invalid Tracking ID' });
@@ -80,31 +81,46 @@ exports.getReportStatus = async (req, res) => {
     }
 };
 
-// @desc    Get report statistics for the Admin Dashboard (Pie/Bar Chart Data)
-// @route   GET /api/v1/admin/analytics
-// @access  Private (Investigator)
+// @desc    Get advanced statistics for the Admin Dashboard
 exports.getAdminAnalytics = async (req, res) => {
     try {
-        // We group reports by their AI-generated category and count them
+        const orgId = req.organizationId; 
+
         const stats = await Report.aggregate([
-            { $match: { organizationId: req.organizationId } }, // Only current org
+            // 1. Filter by organization
+            { $match: { organizationId: orgId } },
+            
+            // 2. Group by category and calculate metrics
             {
                 $group: {
                     _id: "$category",
-                    count: { $sum: 1 },
-                    avgUrgency: { $avg: "$redFlagScore" }
+                    totalReports: { $sum: 1 },
+                    avgUrgency: { $avg: "$redFlagScore" },
+                    openCases: {
+                        $sum: { $cond: [{ $eq: ["$status", "Open"] }, 1, 0] }
+                    }
                 }
             },
-            { $sort: { count: -1 } }
+            
+            // 3. Sort by average urgency (highest risk first)
+            { $sort: { avgUrgency: -1 } }
         ]);
 
-        // Calculate total reports and average organization risk
-        const totalReports = await Report.countDocuments({ organizationId: req.organizationId });
-        
+        // Calculate summary cards
+        const totalReportsCount = await Report.countDocuments({ organizationId: orgId });
+        const criticalReports = await Report.countDocuments({ 
+            organizationId : orgId,
+            redFlagScore: { $gte: 80 } 
+        });
+
         res.status(200).json({
             success: true,
-            total: totalReports,
-            categories: stats
+            summary: {
+                totalReports: totalReportsCount,
+                criticalReports,
+                uniqueCategories: stats.length
+            },
+            breakdown: stats
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

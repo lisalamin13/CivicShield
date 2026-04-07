@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const {submitGrievance, getGrievances, updateGrievanceStatus, deleteGrievance} = require('../controllers/grievanceController');
-const { protect } = require('../middleware/auth');
+const { protect } = require('../middleware/authMiddleware');
 
 // Handles creating a grievance (Student) and getting all grievances (Admin)
 router.route('/')

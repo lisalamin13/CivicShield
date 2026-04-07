@@ -18,6 +18,7 @@ const auth = require('./routes/authRoutes');
 const policyRoutes = require('./routes/policyRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const reportsRoutes = require('./routes/reportsRoutes');
+const aiEthicsRoutes = require('./routes/aiEthicsRoutes');
 const app = express();
 
 // 4. Initializing Database Connection
@@ -34,6 +35,7 @@ app.use('/api/v1/grievances', grievanceRoutes);
 app.use('/api/v1/policies', policyRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/reports', reportsRoutes);
+app.use('/api/v1/ethics', aiEthicsRoutes);
 
 // 6. This is Basic Route for Testing
 app.get('/', (req, res) => { res.send('CivicShield API is running securely...'); });

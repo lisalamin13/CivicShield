@@ -2,10 +2,10 @@ const mongoose = require('mongoose');
 
 const ReportSchema = new mongoose.Schema({
     // Link to the Organization (Tenant) - Indexed for fast multi-tenant lookup
-    organizationId: { 
-        type: String, 
-        required: true, 
-        index: true 
+   organization: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    required: true
     },
     // AES-256 Encrypted grievance text
     encryptedContent: { 
