@@ -126,3 +126,33 @@ exports.getAdminAnalytics = async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 };
+
+// @desc    Get single report details for Admin/Staff viewing
+// @route   GET /api/v1/reports/:reportId
+exports.getReportDetails = async (req, res) => {
+    try {
+        // Find the report by _id AND ensure it belongs to the organization (Tenant Isolation)
+        const report = await Report.findOne({ 
+            _id: req.params.reportId, 
+            organizationId: req.organizationId 
+        });
+
+        if (!report) {
+            return res.status(404).json({ 
+                success: false, 
+                error: "Report not found or you do not have permission to view it." 
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: report
+        });
+    } catch (err) {
+        // Catch invalid MongoDB ObjectIDs
+        res.status(500).json({ 
+            success: false, 
+            error: "Invalid Report ID format." 
+        });
+    }
+};

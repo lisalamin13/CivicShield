@@ -1,8 +1,8 @@
 const Conversation = require('../models/Conversation');
 const Report = require('../models/Report');
-const Policy = require('../models/Policy'); // Needed for AI Context
+const Policy = require('../models/Policy'); 
 const { encrypt } = require('../utils/encryption');
-const { generateAIResponse } = require('../services/aiServices'); // Ensure the 's' is there
+const { generateAIResponse } = require('../services/aiServices'); 
 
 // @desc    Send a message (Anonymous or Staff)
 exports.sendMessage = async (req, res) => {

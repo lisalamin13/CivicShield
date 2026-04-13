@@ -29,6 +29,13 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+
+require('./models/Staff');        // Ensures 'staffs' collection exists
+require('./models/Conversation'); // Ensures 'conversations' collection exists
+require('./models/Report');
+require('./models/superAdmin');
+
+
 app.use('/api/v1/orgs', orgRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/grievances', grievanceRoutes);

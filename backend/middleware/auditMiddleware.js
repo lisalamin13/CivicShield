@@ -8,7 +8,7 @@ const auditLogger = (action) => {
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     await AuditLog.create({
                         organizationId: req.organizationId,
-                        staffId: req.staffId || null, // Populated by your Auth middleware
+                        staffId: req.staffId || null, // Populated by the Auth middleware
                         action: action,
                         targetId: req.params.reportId || req.params.trackingId || "General",
                         ipAddress: req.ip,
