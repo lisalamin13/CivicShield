@@ -1,8 +1,6 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Policy = require('../models/Policy');
 const { buildOrganizationFilter } = require('../utils/organizationFilter');
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const { generateAIResponse } = require('../services/aiServices');
 
 exports.getEthicsAdvice = async (req, res) => {
     try {
@@ -21,8 +19,6 @@ exports.getEthicsAdvice = async (req, res) => {
         );
 
         const policyText = policies.map((policy) => `${policy.title}: ${policy.content}`).join('\n');
-        const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
-
         const prompt = `
             Act as an AI Ethics Advisor for a grievance reporting system called CivicShield.
 
@@ -37,9 +33,7 @@ exports.getEthicsAdvice = async (req, res) => {
             3. A tone check to keep it professional.
         `;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        const text = await generateAIResponse(prompt);
 
         res.status(200).json({
             success: true,

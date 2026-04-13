@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 process.env.JWT_EXPIRE = process.env.JWT_EXPIRE || '1d';
 process.env.AES_SECRET_KEY = process.env.AES_SECRET_KEY || '0'.repeat(64);
-process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-gemini-key';
+process.env.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || 'test-deepseek-key';
 
 test('auth routes load without undefined handlers', () => {
     assert.doesNotThrow(() => require('../routes/authRoutes'));
@@ -12,6 +12,10 @@ test('auth routes load without undefined handlers', () => {
 
 test('admin routes load with the correct auth middleware', () => {
     assert.doesNotThrow(() => require('../routes/adminRoutes'));
+});
+
+test('ai routes load with the DeepSeek-backed controller', () => {
+    assert.doesNotThrow(() => require('../routes/aiRoutes'));
 });
 
 test('report schema accepts organizationId', () => {
