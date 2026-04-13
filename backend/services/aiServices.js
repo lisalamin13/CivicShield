@@ -47,9 +47,9 @@ exports.analyzeGrievance = async (grievanceText) =>
         console.error("DETAILED AI ERROR:", error.message);
         
         return { 
-            summary: "Summary unavailable.", 
-            category: "Uncategorized", 
-            score: 50 
+            executive_summary: "Summary unavailable.",
+            category: "Uncategorized",
+            urgency_score: 50
         };
     }
 };

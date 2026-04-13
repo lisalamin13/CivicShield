@@ -1,18 +1,29 @@
 const Organization = require('../models/Organization');
 
-// @desc    Register a new organization
-// @route   POST /api/v1/organizations
+const slugify = (value) => String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
 exports.registerOrganization = async (req, res) => {
     try {
-        const { name, email } = req.body;
+        const { name, email, status } = req.body;
 
-        // Generate a simple slug from the name (e.g., "Don Bosco" -> "don-bosco")
-        const slug = name.split(' ').join('-').toLowerCase();
+        if (!name || !email) {
+            return res.status(400).json({
+                success: false,
+                error: 'Please provide both organization name and email.'
+            });
+        }
 
+        const slug = slugify(req.body.slug || name);
         const organization = await Organization.create({
+            _id: req.body._id || slug,
             name,
             email,
-            slug
+            slug,
+            status
         });
 
         res.status(201).json({

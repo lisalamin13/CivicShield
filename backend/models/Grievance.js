@@ -26,9 +26,10 @@ const GrievanceSchema = new mongoose.Schema({
         default: false
     },
     organization: {
-        type: mongoose.Schema.ObjectId,
+        type: String,
         ref: 'Organization',
-        required: true
+        required: true,
+        index: true
     },
     reporter: {
         type: mongoose.Schema.ObjectId,

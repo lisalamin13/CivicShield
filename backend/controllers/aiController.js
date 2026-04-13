@@ -1,37 +1,40 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Policy = require('../models/Policy');
+const { buildOrganizationFilter } = require('../utils/organizationFilter');
 
-// Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// @desc    Get AI Ethics Advice based on local policies
-// @route   POST /api/v1/ai/advise
-exports.getEthicsAdvice = async (req, res) => 
-{
-    try 
-    {
-        const { userDraft, organizationId } = req.body;
+exports.getEthicsAdvice = async (req, res) => {
+    try {
+        const userDraft = req.body.userDraft || req.body.text;
+        const organizationId = req.body.organizationId || req.body.orgId;
 
-        // 1. Fetch relevant policies from Compliance Module
-        const policies = await Policy.find({ organization: organizationId });
-        const policyText = policies.map(p => `${p.title}: ${p.content}`).join("\n");
+        if (!userDraft || !organizationId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Both a draft and organization ID are required.'
+            });
+        }
 
-        // 2. Setup the Gemini Model
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const policies = await Policy.find(
+            buildOrganizationFilter('organization', organizationId)
+        );
 
-        // 3. Create the Prompt (The AI Ethics Advisor logic)
+        const policyText = policies.map((policy) => `${policy.title}: ${policy.content}`).join('\n');
+        const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+
         const prompt = `
             Act as an AI Ethics Advisor for a grievance reporting system called CivicShield.
-            
-            Here are the Organization's Compliance Policies:
-            ${policyText}
+
+            Here are the organization's compliance policies:
+            ${policyText || 'No policies were found for this organization.'}
 
             A user is drafting this report: "${userDraft}"
 
-            Based ONLY on the policies above, provide:
+            Based only on the policies above, provide:
             1. Advice on how to make the report more objective.
             2. Any specific policy rules they should mention.
-            3. A tone check (ensure it's professional and not just emotional).
+            3. A tone check to keep it professional.
         `;
 
         const result = await model.generateContent(prompt);
@@ -40,7 +43,8 @@ exports.getEthicsAdvice = async (req, res) =>
 
         res.status(200).json({
             success: true,
-            advice: text
+            advice: text,
+            suggestion: text
         });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

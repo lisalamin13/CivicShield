@@ -37,7 +37,7 @@ const UserSchema = new mongoose.Schema({
 // Encrypt password using bcrypt before saving to database
 UserSchema.pre('save', async function(next) {
     if (!this.isModified('password')) {
-        next();
+        return next();
     }
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
@@ -48,9 +48,14 @@ UserSchema.pre('save', async function(next) {
 UserSchema.methods.getSignedJwtToken = function() {
     const jwt = require('jsonwebtoken');
     return jwt.sign(
-        { id: this._id, role: this.role }, 
+        {
+            id: this._id,
+            role: this.role,
+            organizationId: this.organization,
+            actorType: 'user'
+        },
         process.env.JWT_SECRET, 
-        { expiresIn: '30d' }
+        { expiresIn: process.env.JWT_EXPIRE || '30d' }
     );
 };
 

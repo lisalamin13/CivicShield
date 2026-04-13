@@ -1,78 +1,93 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Staff = require('../models/Staff');
+const SuperAdmin = require('../models/superAdmin');
 
-// @desc    Login user & issue tenant-aware token
-// @route   POST /api/v1/auth/login
-// @access  Public
-exports.login = async (req, res) => 
-{
-    const { email, password } = req.body;
-        // Check for email & password
-    if (!email || !password) 
-    {
-        return res.status(400).json({ success: false, error: 'Please provide an email and password' });
+const loadPrincipal = async (decoded) => {
+    if (decoded.actorType === 'user') {
+        return { principal: await User.findById(decoded.id), actorType: 'user' };
     }
 
-    try 
-    {
-        const user = await User.findOne({ email }).select('+password');
-        if (!user) 
-        {
-            return res.status(401).json({ success: false, error: 'Invalid credentials' });
-        }
-        // Check if password matches
-        const isMatch = await user.matchPassword(password);
-        if (!isMatch) 
-        {
-            return res.status(401).json({ success: false, error: 'Invalid credentials' });
-        }
-
-        // Create token including organizationId for strict multi-tenant isolation [cite: 346, 621]
-        const token = jwt.sign(
-            { 
-                id: user._id, 
-                organizationId: user.organizationId 
-            }, 
-            process.env.JWT_SECRET, 
-            { expiresIn: process.env.JWT_EXPIRE }
-        );
-
-        res.status(200).json({ success: true, token });
-    } 
-    catch (err) 
-    {
-        res.status(500).json({ success: false, error: err.message });
+    if (decoded.actorType === 'staff') {
+        return { principal: await Staff.findById(decoded.id), actorType: 'staff' };
     }
+
+    if (decoded.actorType === 'super_admin') {
+        return { principal: await SuperAdmin.findById(decoded.id), actorType: 'super_admin' };
+    }
+
+    const user = await User.findById(decoded.id);
+    if (user) {
+        return { principal: user, actorType: 'user' };
+    }
+
+    const staff = await Staff.findById(decoded.id);
+    if (staff) {
+        return { principal: staff, actorType: 'staff' };
+    }
+
+    const superAdmin = await SuperAdmin.findById(decoded.id);
+    if (superAdmin) {
+        return { principal: superAdmin, actorType: 'super_admin' };
+    }
+
+    return { principal: null, actorType: decoded.actorType };
 };
 
-// @desc    Protect routes & enforce tenant boundaries
-// @access  Private
-// In controllers/auth.js
-exports.protect = async (req, res, next) => 
-    {
+exports.protect = async (req, res, next) => {
     let token;
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) 
-    {
+
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
         token = req.headers.authorization.split(' ')[1];
     }
 
-    if (!token) 
-    {
-        return res.status(401).json({ success: false, error: 'Not authorized' });
+    if (!token) {
+        return res.status(401).json({ success: false, error: 'Not authorized.' });
     }
 
-    try 
-    {
+    try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = await User.findById(decoded.id);
+        const { principal, actorType } = await loadPrincipal(decoded);
 
-        // Attach organizationId from the token to enforce data isolation
-        req.organizationId = decoded.organizationId;
+        if (!principal) {
+            return res.status(401).json({ success: false, error: 'Not authorized.' });
+        }
 
-        next(); 
-    } 
-    catch (err) 
-    {
-        return res.status(401).json({ success: false, error: 'Not authorized' });
+        req.auth = decoded;
+        req.actorType = actorType;
+        req.actor = principal;
+        req.user = principal;
+        req.role = principal.role || decoded.role;
+
+        const organizationId = decoded.organizationId || principal.organizationId || principal.organization;
+        if (organizationId) {
+            req.organizationId = String(organizationId);
+        }
+
+        if (actorType === 'staff') {
+            req.staff = principal;
+            req.staffId = principal._id;
+        }
+
+        if (actorType === 'super_admin') {
+            req.superAdmin = principal;
+        }
+
+        next();
+    } catch (err) {
+        return res.status(401).json({ success: false, error: 'Not authorized.' });
     }
+};
+
+exports.authorize = (...allowedRoles) => (req, res, next) => {
+    const currentRole = req.role || req.user?.role;
+
+    if (!currentRole || !allowedRoles.includes(currentRole)) {
+        return res.status(403).json({
+            success: false,
+            error: 'You do not have permission to access this resource.'
+        });
+    }
+
+    next();
 };

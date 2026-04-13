@@ -1,57 +1,55 @@
-const Report = require('../models/Report');
 const crypto = require('crypto');
-const { encrypt } = require('../utils/encryption'); 
+const Report = require('../models/Report');
+const { encrypt } = require('../utils/encryption');
 const { analyzeGrievance } = require('../services/aiServices');
+const { buildReportOrganizationFilter } = require('../utils/organizationFilter');
 
-// @desc    Submit an anonymous report with AI Analysis & Encryption
 exports.submitReport = async (req, res) => {
     try {
-        const { content } = req.body;
+        const organizationId = req.organizationId ? String(req.organizationId) : null;
+        const content = typeof req.body.content === 'string' ? req.body.content.trim() : '';
 
-        if (!content) {
-            return res.status(400).json({ success: false, error: "Please provide grievance content." });
+        if (!organizationId) {
+            return res.status(400).json({ success: false, error: 'Organization context is required.' });
         }
 
-        // 1. Generate a unique 16-digit Tracking ID (8 bytes = 16 hex chars)
+        if (!content) {
+            return res.status(400).json({ success: false, error: 'Please provide grievance content.' });
+        }
+
         const trackingId = crypto.randomBytes(8).toString('hex').toUpperCase();
-
-        // 2. Perform AI Analysis (Gemini 3 Flash)
         const aiAnalysis = await analyzeGrievance(content);
+        const secureContent = encrypt(content);
 
-        // 3. Encrypt the original content for Absolute Anonymity
-        const secureContent = encrypt(content); 
-
-        // 4. Prepare the report object - Matches your DB Screenshot
-        const reportData = {
-            organizationId: req.organizationId, 
+        const report = await Report.create({
+            organizationId,
             encryptedContent: secureContent,
-            trackingId: trackingId,
-            aiSummary: aiAnalysis.executive_summary || "Summary unavailable.", 
-            category: aiAnalysis.category || "Uncategorized", 
-            redFlagScore: aiAnalysis.urgency_score || 50, 
+            trackingId,
+            aiSummary: aiAnalysis.executive_summary || 'Summary unavailable.',
+            category: aiAnalysis.category || 'Uncategorized',
+            redFlagScore: Number.isFinite(aiAnalysis.urgency_score) ? aiAnalysis.urgency_score : 50,
             status: 'Open'
-        };
-
-        // 5. Save to MongoDB Atlas
-        await Report.create(reportData);
+        });
 
         res.status(201).json({
             success: true,
-            message: "Report submitted and analyzed successfully.",
-            trackingId: trackingId 
+            message: 'Report submitted and analyzed successfully.',
+            trackingId,
+            data: {
+                id: report._id,
+                status: report.status
+            }
         });
     } catch (err) {
-        console.error("Submission Error:", err.message);
+        console.error('Submission Error:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 };
 
-// @desc    Get all reports for an organization, sorted by Red Flag Score
 exports.getOrgReports = async (req, res) => {
     try {
-        // Admins see urgent cases first based on Red Flag Score
-        const reports = await Report.find({ organizationId: req.organizationId })
-            .sort({ redFlagScore: -1 });
+        const reports = await Report.find(buildReportOrganizationFilter(req.organizationId))
+            .sort({ redFlagScore: -1, createdAt: -1 });
 
         res.status(200).json({
             success: true,
@@ -63,16 +61,15 @@ exports.getOrgReports = async (req, res) => {
     }
 };
 
-// @desc    Track report status using the 16-digit Tracking ID
 exports.getReportStatus = async (req, res) => {
     try {
-        const report = await Report.findOne({ 
-            trackingId: req.params.trackingId,
-            organizationId: req.organizationId 
-        }).select('status createdAt aiSummary category redFlagScore'); 
+        const report = await Report.findOne({
+            trackingId: String(req.params.trackingId).toUpperCase(),
+            ...buildReportOrganizationFilter(req.organizationId)
+        }).select('status createdAt aiSummary category redFlagScore');
 
         if (!report) {
-            return res.status(404).json({ success: false, error: 'Invalid Tracking ID' });
+            return res.status(404).json({ success: false, error: 'Invalid tracking ID.' });
         }
 
         res.status(200).json({ success: true, data: report });
@@ -81,36 +78,29 @@ exports.getReportStatus = async (req, res) => {
     }
 };
 
-// @desc    Get advanced statistics for the Admin Dashboard
 exports.getAdminAnalytics = async (req, res) => {
     try {
-        const orgId = req.organizationId; 
+        const tenantFilter = buildReportOrganizationFilter(req.organizationId);
 
         const stats = await Report.aggregate([
-            // 1. Filter by organization
-            { $match: { organizationId: orgId } },
-            
-            // 2. Group by category and calculate metrics
+            { $match: tenantFilter },
             {
                 $group: {
-                    _id: "$category",
+                    _id: '$category',
                     totalReports: { $sum: 1 },
-                    avgUrgency: { $avg: "$redFlagScore" },
+                    avgUrgency: { $avg: '$redFlagScore' },
                     openCases: {
-                        $sum: { $cond: [{ $eq: ["$status", "Open"] }, 1, 0] }
+                        $sum: { $cond: [{ $eq: ['$status', 'Open'] }, 1, 0] }
                     }
                 }
             },
-            
-            // 3. Sort by average urgency (highest risk first)
             { $sort: { avgUrgency: -1 } }
         ]);
 
-        // Calculate summary cards
-        const totalReportsCount = await Report.countDocuments({ organizationId: orgId });
-        const criticalReports = await Report.countDocuments({ 
-            organizationId : orgId,
-            redFlagScore: { $gte: 80 } 
+        const totalReportsCount = await Report.countDocuments(tenantFilter);
+        const criticalReports = await Report.countDocuments({
+            ...tenantFilter,
+            redFlagScore: { $gte: 80 }
         });
 
         res.status(200).json({
@@ -127,20 +117,17 @@ exports.getAdminAnalytics = async (req, res) => {
     }
 };
 
-// @desc    Get single report details for Admin/Staff viewing
-// @route   GET /api/v1/reports/:reportId
 exports.getReportDetails = async (req, res) => {
     try {
-        // Find the report by _id AND ensure it belongs to the organization (Tenant Isolation)
-        const report = await Report.findOne({ 
-            _id: req.params.reportId, 
-            organizationId: req.organizationId 
+        const report = await Report.findOne({
+            _id: req.params.reportId,
+            ...buildReportOrganizationFilter(req.organizationId)
         });
 
         if (!report) {
-            return res.status(404).json({ 
-                success: false, 
-                error: "Report not found or you do not have permission to view it." 
+            return res.status(404).json({
+                success: false,
+                error: 'Report not found or you do not have permission to view it.'
             });
         }
 
@@ -149,10 +136,16 @@ exports.getReportDetails = async (req, res) => {
             data: report
         });
     } catch (err) {
-        // Catch invalid MongoDB ObjectIDs
-        res.status(500).json({ 
-            success: false, 
-            error: "Invalid Report ID format." 
+        if (err.name === 'CastError') {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid report ID format.'
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            error: err.message
         });
     }
 };

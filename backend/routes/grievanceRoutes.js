@@ -1,17 +1,32 @@
 const express = require('express');
 const router = express.Router();
 
-const {submitGrievance, getGrievances, updateGrievanceStatus, deleteGrievance} = require('../controllers/grievanceController');
-const { protect } = require('../middleware/authMiddleware');
+const {
+    submitGrievance,
+    getGrievances,
+    updateGrievanceStatus,
+    deleteGrievance
+} = require('../controllers/grievanceController');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
-// Handles creating a grievance (Student) and getting all grievances (Admin)
+const adminRoles = [
+    'SuperAdmin',
+    'SUPER_ADMIN',
+    'OrgAdmin',
+    'DeptHead',
+    'Admin',
+    'Investigator',
+    'Compliance_Officer'
+];
+
+router.post('/submit', protect, submitGrievance);
+
 router.route('/')
     .post(protect, submitGrievance)
-    .get(protect, getGrievances);
+    .get(protect, authorize(...adminRoles), getGrievances);
 
-// Handles updating or deleting a specific grievance by its ID
 router.route('/:id')
-    .put(protect, updateGrievanceStatus)
-    .delete(protect, deleteGrievance);
+    .put(protect, authorize(...adminRoles), updateGrievanceStatus)
+    .delete(protect, authorize(...adminRoles), deleteGrievance);
 
 module.exports = router;
