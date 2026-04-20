@@ -4,6 +4,8 @@ const router = express.Router();
 const {
     register,
     login,
+    verifyAdminLoginOTP,
+    resendAdminLoginOTP,
     requestOTP,
     verifyOTP,
     requestSuperOTP,
@@ -12,6 +14,8 @@ const {
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/login/verify-otp', verifyAdminLoginOTP);
+router.post('/login/resend-otp', resendAdminLoginOTP);
 
 router.post('/request-otp', requestOTP);
 router.post('/verify-otp', verifyOTP);

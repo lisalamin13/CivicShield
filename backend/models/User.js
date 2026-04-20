@@ -18,6 +18,12 @@ const UserSchema = new mongoose.Schema({
         minlength: 6,
         select: false // This prevents the password from being returned in API calls by default
     },
+    phoneNumber: {
+        type: String,
+        unique: true,
+        sparse: true,
+        trim: true
+    },
     role: {
         type: String,
         enum: ['SuperAdmin', 'OrgAdmin', 'DeptHead', 'reporter', 'user'],
@@ -36,6 +42,10 @@ const UserSchema = new mongoose.Schema({
 
 // Encrypt password using bcrypt before saving to database
 UserSchema.pre('save', async function(next) {
+    if (this.isModified('phoneNumber') && this.phoneNumber) {
+        this.phoneNumber = String(this.phoneNumber).trim().replace(/\s+/g, '');
+    }
+
     if (!this.isModified('password')) {
         return next();
     }

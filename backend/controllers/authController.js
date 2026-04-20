@@ -2,18 +2,21 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Staff = require('../models/Staff');
 const SuperAdmin = require('../models/superAdmin');
+const {
+    startPhoneVerification,
+    checkPhoneVerification,
+    normalizePhoneNumber,
+    maskPhoneNumber
+} = require('../services/otpService');
 
-const signToken = ({
-    id,
-    role,
-    organizationId,
-    actorType,
+const ADMIN_OTP_REQUIRED_ROLES = new Set(['SuperAdmin', 'OrgAdmin']);
+const ADMIN_OTP_SESSION_PURPOSE = 'admin_login_otp';
+const ADMIN_OTP_SESSION_EXPIRE = process.env.ADMIN_OTP_SESSION_EXPIRE || '10m';
+
+const signToken = (
+    payload,
     expiresIn = process.env.JWT_EXPIRE || '1d'
-}) => jwt.sign(
-    { id, role, organizationId, actorType },
-    process.env.JWT_SECRET,
-    { expiresIn }
-);
+) => jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
 
 const buildAuthPayload = (principal, actorType) => ({
     id: principal._id,
@@ -22,15 +25,80 @@ const buildAuthPayload = (principal, actorType) => ({
     actorType
 });
 
+const buildUserResponse = (user) => ({
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    phoneNumber: user.phoneNumber,
+    role: user.role,
+    organization: user.organization
+});
+
+const buildPhoneLookup = (phoneNumber) => {
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+
+    return [...new Set([
+        String(phoneNumber || '').trim(),
+        normalizedPhoneNumber
+    ].filter(Boolean))];
+};
+
+const requiresAdminOtp = (role) => ADMIN_OTP_REQUIRED_ROLES.has(role);
+
+const signAdminOtpSessionToken = (user) => signToken(
+    {
+        id: user._id,
+        role: user.role,
+        organizationId: user.organization || undefined,
+        actorType: 'user',
+        purpose: ADMIN_OTP_SESSION_PURPOSE
+    },
+    ADMIN_OTP_SESSION_EXPIRE
+);
+
+const verifyAdminOtpSessionToken = (otpSessionToken) => {
+    try {
+        const decoded = jwt.verify(otpSessionToken, process.env.JWT_SECRET);
+
+        if (decoded.purpose !== ADMIN_OTP_SESSION_PURPOSE || decoded.actorType !== 'user') {
+            return null;
+        }
+
+        return decoded;
+    } catch (err) {
+        return null;
+    }
+};
+
+const sendAdminOtpChallenge = async (user) => {
+    if (!user.phoneNumber) {
+        throw new Error('A phone number is required on the admin account before OTP login can be used.');
+    }
+
+    await startPhoneVerification(user.phoneNumber);
+
+    return {
+        otpSessionToken: signAdminOtpSessionToken(user),
+        phoneNumberHint: maskPhoneNumber(user.phoneNumber)
+    };
+};
+
 exports.register = async (req, res) => {
     try {
-        const { name, email, password, role, organization, organizationId } = req.body;
+        const { name, email, password, phoneNumber, role, organization, organizationId } = req.body;
         const resolvedOrganizationId = organizationId || organization;
 
         if (!name || !email || !password || !resolvedOrganizationId) {
             return res.status(400).json({
                 success: false,
                 error: 'Please provide name, email, password, and organization.'
+            });
+        }
+
+        if (requiresAdminOtp(role) && !phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                error: 'A phone number is required for SuperAdmin and OrgAdmin accounts.'
             });
         }
 
@@ -46,6 +114,7 @@ exports.register = async (req, res) => {
             name,
             email,
             password,
+            phoneNumber,
             role,
             organization: resolvedOrganizationId
         });
@@ -59,6 +128,7 @@ exports.register = async (req, res) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
+                phoneNumber: user.phoneNumber,
                 role: user.role,
                 organization: user.organization
             }
@@ -89,18 +159,132 @@ exports.login = async (req, res) => {
             return res.status(401).json({ success: false, error: 'Invalid credentials' });
         }
 
+        if (requiresAdminOtp(user.role)) {
+            if (!user.phoneNumber) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'This admin account does not have a phone number configured for OTP.'
+                });
+            }
+
+            const otpChallenge = await sendAdminOtpChallenge(user);
+
+            return res.status(200).json({
+                success: true,
+                requiresOtp: true,
+                otpSessionToken: otpChallenge.otpSessionToken,
+                phoneNumberHint: otpChallenge.phoneNumberHint,
+                message: 'OTP sent to the registered phone number.'
+            });
+        }
+
         const token = signToken(buildAuthPayload(user, 'user'));
 
         res.status(200).json({
             success: true,
             token,
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                organization: user.organization
-            }
+            user: buildUserResponse(user)
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+};
+
+exports.verifyAdminLoginOTP = async (req, res) => {
+    try {
+        const { otpSessionToken, otp } = req.body;
+
+        if (!otpSessionToken || !otp) {
+            return res.status(400).json({
+                success: false,
+                error: 'OTP session token and OTP are required.'
+            });
+        }
+
+        const decodedSession = verifyAdminOtpSessionToken(otpSessionToken);
+        if (!decodedSession) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid or expired OTP session.'
+            });
+        }
+
+        const user = await User.findById(decodedSession.id);
+        if (!user || !requiresAdminOtp(user.role)) {
+            return res.status(401).json({
+                success: false,
+                error: 'Admin account not found for OTP verification.'
+            });
+        }
+
+        if (!user.phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                error: 'No phone number is configured for this admin account.'
+            });
+        }
+
+        const isOtpValid = await checkPhoneVerification(user.phoneNumber, otp);
+        if (!isOtpValid) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid or expired OTP.'
+            });
+        }
+
+        const token = signToken(buildAuthPayload(user, 'user'));
+
+        res.status(200).json({
+            success: true,
+            token,
+            user: buildUserResponse(user)
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+};
+
+exports.resendAdminLoginOTP = async (req, res) => {
+    try {
+        const { otpSessionToken } = req.body;
+
+        if (!otpSessionToken) {
+            return res.status(400).json({
+                success: false,
+                error: 'OTP session token is required.'
+            });
+        }
+
+        const decodedSession = verifyAdminOtpSessionToken(otpSessionToken);
+        if (!decodedSession) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid or expired OTP session.'
+            });
+        }
+
+        const user = await User.findById(decodedSession.id);
+        if (!user || !requiresAdminOtp(user.role)) {
+            return res.status(401).json({
+                success: false,
+                error: 'Admin account not found for OTP verification.'
+            });
+        }
+
+        if (!user.phoneNumber) {
+            return res.status(400).json({
+                success: false,
+                error: 'This admin account does not have a phone number configured for OTP.'
+            });
+        }
+
+        const otpChallenge = await sendAdminOtpChallenge(user);
+
+        res.status(200).json({
+            success: true,
+            otpSessionToken: otpChallenge.otpSessionToken,
+            phoneNumberHint: otpChallenge.phoneNumberHint,
+            message: 'OTP resent to the registered phone number.'
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -114,19 +298,17 @@ exports.requestOTP = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Phone number is required.' });
         }
 
-        const staff = await Staff.findOne({ phoneNumber, isActive: true });
+        const staff = await Staff.findOne({
+            phoneNumber: { $in: buildPhoneLookup(phoneNumber) },
+            isActive: true
+        });
         if (!staff) {
             return res.status(404).json({ success: false, error: 'Active staff member not found.' });
         }
 
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        staff.otp = otp;
-        staff.otpExpires = Date.now() + 5 * 60 * 1000;
-        await staff.save();
+        await startPhoneVerification(staff.phoneNumber);
 
-        console.log(`STAFF OTP: ${otp}`);
-
-        res.status(200).json({ success: true, message: 'OTP generated successfully.' });
+        res.status(200).json({ success: true, message: 'OTP sent successfully.' });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -136,19 +318,18 @@ exports.verifyOTP = async (req, res) => {
     try {
         const { phoneNumber, otp } = req.body;
         const staff = await Staff.findOne({
-            phoneNumber,
-            otp,
-            otpExpires: { $gt: Date.now() },
+            phoneNumber: { $in: buildPhoneLookup(phoneNumber) },
             isActive: true
         });
 
         if (!staff) {
-            return res.status(401).json({ success: false, error: 'Invalid or expired OTP.' });
+            return res.status(404).json({ success: false, error: 'Active staff member not found.' });
         }
 
-        staff.otp = undefined;
-        staff.otpExpires = undefined;
-        await staff.save();
+        const isOtpValid = await checkPhoneVerification(staff.phoneNumber, otp);
+        if (!isOtpValid) {
+            return res.status(401).json({ success: false, error: 'Invalid or expired OTP.' });
+        }
 
         const token = signToken(buildAuthPayload(staff, 'staff'));
 
@@ -170,19 +351,16 @@ exports.requestSuperOTP = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Phone number is required.' });
         }
 
-        const admin = await SuperAdmin.findOne({ phoneNumber });
+        const admin = await SuperAdmin.findOne({
+            phoneNumber: { $in: buildPhoneLookup(phoneNumber) }
+        });
         if (!admin) {
             return res.status(404).json({ success: false, error: 'Super admin not found.' });
         }
 
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        admin.otp = otp;
-        admin.otpExpires = Date.now() + 5 * 60 * 1000;
-        await admin.save();
+        await startPhoneVerification(admin.phoneNumber);
 
-        console.log(`SUPER ADMIN OTP: ${otp}`);
-
-        res.status(200).json({ success: true, message: 'Super admin OTP generated successfully.' });
+        res.status(200).json({ success: true, message: 'Super admin OTP sent successfully.' });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -192,23 +370,19 @@ exports.verifySuperOTP = async (req, res) => {
     try {
         const { phoneNumber, otp } = req.body;
         const admin = await SuperAdmin.findOne({
-            phoneNumber,
-            otp,
-            otpExpires: { $gt: Date.now() }
+            phoneNumber: { $in: buildPhoneLookup(phoneNumber) }
         });
 
         if (!admin) {
+            return res.status(404).json({ success: false, error: 'Super admin not found.' });
+        }
+
+        const isOtpValid = await checkPhoneVerification(admin.phoneNumber, otp);
+        if (!isOtpValid) {
             return res.status(401).json({ success: false, error: 'Invalid or expired super admin OTP.' });
         }
 
-        admin.otp = undefined;
-        admin.otpExpires = undefined;
-        await admin.save();
-
-        const token = signToken({
-            ...buildAuthPayload(admin, 'super_admin'),
-            expiresIn: '12h'
-        });
+        const token = signToken(buildAuthPayload(admin, 'super_admin'), '12h');
 
         res.status(200).json({
             success: true,
