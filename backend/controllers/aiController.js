@@ -1,48 +1,114 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const Policy = require('../models/Policy');
+const { StatusCodes } = require('http-status-codes');
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const AIUsageLog = require('../models/AIUsageLog');
+const Report = require('../models/Report');
+const { analyzeReport, draftReply, ethicsChat } = require('../services/aiService');
+const AppError = require('../utils/appError');
+const { decryptText } = require('../utils/crypto');
+const { sanitizeObject } = require('../utils/sanitize');
 
-// @desc    Get AI Ethics Advice based on local policies
-// @route   POST /api/v1/ai/advise
-exports.getEthicsAdvice = async (req, res) => 
-{
-    try 
-    {
-        const { userDraft, organizationId } = req.body;
+const chat = async (req, res) => {
+  const payload = sanitizeObject(req.body);
+  const organizationId = payload.organizationId || req.user?.organizationId || null;
+  const result = await ethicsChat({
+    organizationId,
+    userId: req.user?._id || null,
+    message: payload.message,
+  });
 
-        // 1. Fetch relevant policies from Compliance Module
-        const policies = await Policy.find({ organization: organizationId });
-        const policyText = policies.map(p => `${p.title}: ${p.content}`).join("\n");
+  res.status(StatusCodes.OK).json({
+    success: true,
+    ...result,
+  });
+};
 
-        // 2. Setup the Gemini Model
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+const reportIntelligence = async (req, res) => {
+  const report = await Report.findById(req.params.reportId);
 
-        // 3. Create the Prompt (The AI Ethics Advisor logic)
-        const prompt = `
-            Act as an AI Ethics Advisor for a grievance reporting system called CivicShield.
-            
-            Here are the Organization's Compliance Policies:
-            ${policyText}
+  if (!report) {
+    throw new AppError('Report not found', StatusCodes.NOT_FOUND);
+  }
 
-            A user is drafting this report: "${userDraft}"
+  if (
+    req.user.role !== 'super_admin' &&
+    String(req.user.organizationId) !== String(report.organizationId)
+  ) {
+    throw new AppError('Report access denied', StatusCodes.FORBIDDEN);
+  }
 
-            Based ONLY on the policies above, provide:
-            1. Advice on how to make the report more objective.
-            2. Any specific policy rules they should mention.
-            3. A tone check (ensure it's professional and not just emotional).
-        `;
+  const intelligence = await analyzeReport({
+    report: {
+      subject: report.subject,
+      department: report.department,
+      narrative: decryptText(report.narrativeEncrypted),
+    },
+    organizationId: report.organizationId,
+    userId: req.user._id,
+  });
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+  report.aiSummary = intelligence.summary;
+  report.aiSentiment = intelligence.sentiment;
+  report.aiUrgency = intelligence.urgency;
+  report.aiRiskScore = intelligence.riskScore;
+  report.aiTags = intelligence.tags;
+  report.category = intelligence.category || report.category;
+  await report.save();
 
-        res.status(200).json({
-            success: true,
-            advice: text
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+  res.status(StatusCodes.OK).json({
+    success: true,
+    intelligence,
+  });
+};
+
+const draftReportReply = async (req, res) => {
+  const report = await Report.findById(req.params.reportId);
+
+  if (!report) {
+    throw new AppError('Report not found', StatusCodes.NOT_FOUND);
+  }
+
+  if (
+    req.user.role !== 'super_admin' &&
+    String(req.user.organizationId) !== String(report.organizationId)
+  ) {
+    throw new AppError('Report access denied', StatusCodes.FORBIDDEN);
+  }
+
+  const result = await draftReply({
+    report: {
+      subject: report.subject,
+      status: report.status,
+      aiSummary: report.aiSummary,
+    },
+    organizationId: report.organizationId,
+    userId: req.user._id,
+  });
+
+  res.status(StatusCodes.OK).json({
+    success: true,
+    ...result,
+  });
+};
+
+const getAIUsage = async (req, res) => {
+  const filter =
+    req.user.role === 'super_admin'
+      ? req.query.organizationId
+        ? { organizationId: req.query.organizationId }
+        : {}
+      : { organizationId: req.user.organizationId };
+
+  const usage = await AIUsageLog.find(filter).sort({ createdAt: -1 }).limit(100).lean();
+
+  res.status(StatusCodes.OK).json({
+    success: true,
+    usage,
+  });
+};
+
+module.exports = {
+  chat,
+  draftReportReply,
+  getAIUsage,
+  reportIntelligence,
 };

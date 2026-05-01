@@ -1,5 +1,15 @@
 {
-  "dependencies": {
-    "helmet": "^8.1.0"
+  "name": "civicshield-platform",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "seed": "npm --prefix backend run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

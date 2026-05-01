@@ -1,0 +1,7 @@
+# Use this workspace to collaborate
+workspace:
+  id: 69ccfa19-0f5a-48fd-80bc-2474d71d5287
+
+localResources:
+  collections:
+    - ..\CivicShield_Postman_Collection.json

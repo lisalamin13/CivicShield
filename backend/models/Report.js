@@ -1,54 +1,113 @@
 const mongoose = require('mongoose');
 
-const ReportSchema = new mongoose.Schema({
-    // Link to the Organization (Tenant) - Indexed for fast multi-tenant lookup
-    organizationId: { 
-        type: String, 
-        required: true, 
-        index: true 
+const reportSchema = new mongoose.Schema(
+  {
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      required: true,
+      index: true,
     },
-    // AES-256 Encrypted grievance text
-    encryptedContent: { 
-        type: String, 
-        required: [true, 'Please add the grievance content'] 
+    reporterUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
-    // 16-character alphanumeric token for anonymous tracking
-    trackingId: { 
-        type: String, 
-        unique: true, 
-        required: true,
-        index: true 
+    trackingCode: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
     },
-    // Case status
-    status: { 
-        type: String, 
-        enum: ['Open', 'Under Review', 'Resolved', 'Dismissed'], 
-        default: 'Open' 
+    accessKeyHash: {
+      type: String,
+      required: true,
+      select: false,
     },
-    // AI-generated analytics fields
-    aiSummary: { type: String },
-    
-    // Categorized by NLP engine - Indexed for the Analytics Dashboard
-    category: { 
-        type: String, 
-        index: true, 
-        default: 'Uncategorized' 
+    anonymous: {
+      type: Boolean,
+      default: true,
     },
-    
-    // Urgency score calculated by Gemini 3 Flash
-    redFlagScore: { 
-        type: Number, 
-        min: 0, 
-        max: 100, 
-        default: 0 
+    subject: {
+      type: String,
+      required: true,
+      trim: true,
     },
-    createdAt: { 
-        type: Date, 
-        default: Date.now 
-    }
-});
+    category: {
+      type: String,
+      default: 'unclassified',
+      index: true,
+    },
+    department: String,
+    incidentDate: Date,
+    location: String,
+    narrativeEncrypted: {
+      type: String,
+      required: true,
+    },
+    reporterEmailEncrypted: String,
+    reporterPhoneEncrypted: String,
+    status: {
+      type: String,
+      enum: [
+        'submitted',
+        'under_review',
+        'investigating',
+        'waiting_on_reporter',
+        'resolved',
+        'closed',
+        'escalated',
+      ],
+      default: 'submitted',
+      index: true,
+    },
+    priority: {
+      type: String,
+      enum: ['low', 'medium', 'high', 'critical'],
+      default: 'medium',
+      index: true,
+    },
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    assignedDepartment: String,
+    resolutionSummary: String,
+    aiSummary: String,
+    aiSentiment: String,
+    aiUrgency: String,
+    aiRiskScore: { type: Number, default: 0 },
+    aiTags: {
+      type: [String],
+      default: [],
+    },
+    evidenceCount: {
+      type: Number,
+      default: 0,
+    },
+    replyCount: {
+      type: Number,
+      default: 0,
+    },
+    abuseFlagsCount: {
+      type: Number,
+      default: 0,
+    },
+    lastActivityAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    metadata: {
+      submissionChannel: { type: String, default: 'web' },
+      sourceIpHash: String,
+      userAgentHash: String,
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
 
-// Create a compound index to speed up Admin queries (Org + Score)
-ReportSchema.index({ organizationId: 1, redFlagScore: -1 });
-
-module.exports = mongoose.model('Report', ReportSchema);
+module.exports = mongoose.model('Report', reportSchema);
