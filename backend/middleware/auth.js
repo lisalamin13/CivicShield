@@ -1,78 +1,123 @@
-const jwt = require('jsonwebtoken');
+const { StatusCodes } = require('http-status-codes');
+
+const SystemSetting = require('../models/SystemSetting');
 const User = require('../models/User');
+const AppError = require('../utils/appError');
+const { verifyAccessToken } = require('../utils/jwt');
 
-// @desc    Login user & issue tenant-aware token
-// @route   POST /api/v1/auth/login
-// @access  Public
-exports.login = async (req, res) => 
-{
-    const { email, password } = req.body;
-        // Check for email & password
-    if (!email || !password) 
-    {
-        return res.status(400).json({ success: false, error: 'Please provide an email and password' });
-    }
+const attachUser = async (token) => {
+  if (!token) {
+    return null;
+  }
 
-    try 
-    {
-        const user = await User.findOne({ email }).select('+password');
-        if (!user) 
-        {
-            return res.status(401).json({ success: false, error: 'Invalid credentials' });
-        }
-        // Check if password matches
-        const isMatch = await user.matchPassword(password);
-        if (!isMatch) 
-        {
-            return res.status(401).json({ success: false, error: 'Invalid credentials' });
-        }
-
-        // Create token including organizationId for strict multi-tenant isolation [cite: 346, 621]
-        const token = jwt.sign(
-            { 
-                id: user._id, 
-                organizationId: user.organizationId 
-            }, 
-            process.env.JWT_SECRET, 
-            { expiresIn: process.env.JWT_EXPIRE }
-        );
-
-        res.status(200).json({ success: true, token });
-    } 
-    catch (err) 
-    {
-        res.status(500).json({ success: false, error: err.message });
-    }
+  try {
+    const decoded = verifyAccessToken(token);
+    return await User.findById(decoded.sub).select('+refreshTokens');
+  } catch (_error) {
+    return null;
+  }
 };
 
-// @desc    Protect routes & enforce tenant boundaries
-// @access  Private
-// In controllers/auth.js
-exports.protect = async (req, res, next) => 
-    {
-    let token;
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) 
-    {
-        token = req.headers.authorization.split(' ')[1];
+const resolveToken = (req) => {
+  const header = req.headers.authorization;
+
+  if (header?.startsWith('Bearer ')) {
+    return header.split(' ')[1];
+  }
+
+  return null;
+};
+
+const protect = async (req, _res, next) => {
+  const user = await attachUser(resolveToken(req));
+
+  if (!user || !user.isActive) {
+    return next(new AppError('Authentication required', StatusCodes.UNAUTHORIZED));
+  }
+
+  req.user = user;
+  return next();
+};
+
+const optionalAuth = async (req, _res, next) => {
+  const user = await attachUser(resolveToken(req));
+
+  if (user) {
+    req.user = user;
+  }
+
+  return next();
+};
+
+const authorize = (...roles) => (req, _res, next) => {
+  if (!req.user) {
+    return next(new AppError('Authentication required', StatusCodes.UNAUTHORIZED));
+  }
+
+  if (!roles.includes(req.user.role)) {
+    return next(new AppError('You are not allowed to perform this action', StatusCodes.FORBIDDEN));
+  }
+
+  return next();
+};
+
+const requireOrganizationScope = (req, _res, next) => {
+  if (!req.user) {
+    return next(new AppError('Authentication required', StatusCodes.UNAUTHORIZED));
+  }
+
+  if (req.user.role === 'super_admin') {
+    return next();
+  }
+
+  const routeOrganizationId =
+    req.params.organizationId || req.body.organizationId || req.query.organizationId;
+
+  if (
+    routeOrganizationId &&
+    req.user.organizationId &&
+    String(routeOrganizationId) !== String(req.user.organizationId)
+  ) {
+    return next(new AppError('Cross-organization access is blocked', StatusCodes.FORBIDDEN));
+  }
+
+  return next();
+};
+
+const respectMaintenanceMode = async (req, _res, next) => {
+  if (req.path === '/health') {
+    return next();
+  }
+
+  try {
+    const settings = await SystemSetting.findOne({ key: 'platform' }).lean();
+
+    if (!settings?.maintenanceMode) {
+      return next();
     }
 
-    if (!token) 
-    {
-        return res.status(401).json({ success: false, error: 'Not authorized' });
+    const user = await attachUser(resolveToken(req));
+
+    if (user?.role === 'super_admin') {
+      req.user = user;
+      return next();
     }
 
-    try 
-    {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = await User.findById(decoded.id);
+    return next(
+      new AppError(
+        settings.maintenanceMessage || 'CivicShield is temporarily under maintenance',
+        StatusCodes.SERVICE_UNAVAILABLE,
+      ),
+    );
+  } catch (_error) {
+    return next();
+  }
+};
 
-        // Attach organizationId from the token to enforce data isolation
-        req.organizationId = decoded.organizationId;
-
-        next(); 
-    } 
-    catch (err) 
-    {
-        return res.status(401).json({ success: false, error: 'Not authorized' });
-    }
+module.exports = {
+  authorize,
+  optionalAuth,
+  protect,
+  requireOrganizationScope,
+  respectMaintenanceMode,
 };

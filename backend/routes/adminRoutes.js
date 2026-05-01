@@ -1,14 +1,24 @@
 const express = require('express');
+
+const {
+  listAbuseReports,
+  listAuditLogs,
+  listSubscriptions,
+  platformOverview,
+  tokenUsage,
+  updateSubscription,
+} = require('../controllers/adminController');
+const { authorize, protect } = require('../middleware/auth');
+
 const router = express.Router();
-const { getAdminReports, getSingleReport } = require('../controllers/adminController');
-const { protect } = require('../controller/auth');
-const organizationMiddleware = require('../middleware/organization');
 
-// Apply both: Check for Token AND Organization ID 
-router.use(protect);
-router.use(organizationMiddleware);
+router.use(protect, authorize('super_admin'));
 
-router.get('/reports', getAdminReports);
-router.get('/reports/:id', getSingleReport);
+router.get('/platform-overview', platformOverview);
+router.get('/abuse-reports', listAbuseReports);
+router.get('/audit-logs', listAuditLogs);
+router.get('/subscriptions', listSubscriptions);
+router.patch('/subscriptions/:subscriptionId', updateSubscription);
+router.get('/token-usage', tokenUsage);
 
 module.exports = router;

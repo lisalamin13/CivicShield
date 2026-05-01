@@ -1,0 +1,365 @@
+{
+  "info": {
+    "name": "CivicShield API",
+    "description": "Postman Collection for CivicShield Backend API endpoints. Many endpoints require an orchestration token in the Authorization header. A collection variable 'token' is provided for convenience.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "YOUR_AUTH_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "orgId",
+      "value": "YOUR_ORG_ID_HERE",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"password123\",\n  \"organizationId\": \"{{orgId}}\",\n  \"role\": \"User\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"]}
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"]}
+          }
+        },
+        {
+          "name": "Verify Login OTP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/auth/login/verify-otp", "host": ["{{baseUrl}}"], "path": ["auth", "login", "verify-otp"]}
+          }
+        },
+        {
+          "name": "Resend Login OTP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/auth/login/resend-otp", "host": ["{{baseUrl}}"], "path": ["auth", "login", "resend-otp"]}
+          }
+        },
+        {
+          "name": "Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/auth/request-otp", "host": ["{{baseUrl}}"], "path": ["auth", "request-otp"]}
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/auth/verify-otp", "host": ["{{baseUrl}}"], "path": ["auth", "verify-otp"]}
+          }
+        },
+        {
+          "name": "Super Admin Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"super@example.com\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/auth/super/request-otp", "host": ["{{baseUrl}}"], "path": ["auth", "super", "request-otp"]}
+          }
+        },
+        {
+          "name": "Super Admin Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"super@example.com\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/auth/super/verify-otp", "host": ["{{baseUrl}}"], "path": ["auth", "super", "verify-otp"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Organizations",
+      "item": [
+        {
+          "name": "Register Organization",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Org Name\",\n  \"domain\": \"org.com\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/orgs", "host": ["{{baseUrl}}"], "path": ["orgs"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Grievances",
+      "item": [
+        {
+          "name": "Submit Grievance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Issue Title\",\n  \"description\": \"Issue Description\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/grievances/submit", "host": ["{{baseUrl}}"], "path": ["grievances", "submit"]}
+          }
+        },
+        {
+          "name": "Post Grievance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test\",\n  \"description\": \"Test\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/grievances", "host": ["{{baseUrl}}"], "path": ["grievances"]}
+          }
+        },
+        {
+          "name": "Get Grievances (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "{{baseUrl}}/grievances", "host": ["{{baseUrl}}"], "path": ["grievances"]}
+          }
+        },
+        {
+          "name": "Update Grievance Status (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Resolved\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/grievances/123", "host": ["{{baseUrl}}"], "path": ["grievances", "123"]}
+          }
+        },
+        {
+          "name": "Delete Grievance (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "{{baseUrl}}/grievances/123", "host": ["{{baseUrl}}"], "path": ["grievances", "123"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Policies",
+      "item": [
+        {
+          "name": "Add Policy (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Policy Title\",\n  \"content\": \"Policy Content\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/policies", "host": ["{{baseUrl}}"], "path": ["policies"]}
+          }
+        },
+        {
+          "name": "Get Policies by Org",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{baseUrl}}/policies/{{orgId}}", "host": ["{{baseUrl}}"], "path": ["policies", "{{orgId}}"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI Ethics",
+      "item": [
+        {
+          "name": "Consult Advisor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "x-organization-id", "value": "{{orgId}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"Is this ethical?\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/ethics/consult", "host": ["{{baseUrl}}"], "path": ["ethics", "consult"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI Recommendations",
+      "item": [
+        {
+          "name": "AI Advise",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scenario\": \"Describe scenario\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/ai/advise", "host": ["{{baseUrl}}"], "path": ["ai", "advise"]}
+          }
+        },
+        {
+          "name": "AI Analyze",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": \"Data to analyze\"\n}"
+            },
+            "url": {"raw": "{{baseUrl}}/ai/analyze", "host": ["{{baseUrl}}"], "path": ["ai", "analyze"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Submit Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "x-organization-id", "value": "{{orgId}}"}
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {"key": "title", "value": "Test Report", "type": "text"},
+                {"key": "description", "value": "Description", "type": "text"},
+                {"key": "evidence", "type": "file", "src": []}
+              ]
+            },
+            "url": {"raw": "{{baseUrl}}/reports", "host": ["{{baseUrl}}"], "path": ["reports"]}
+          }
+        },
+        {
+          "name": "Get Report Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "x-organization-id", "value": "{{orgId}}"}
+            ],
+            "url": {"raw": "{{baseUrl}}/reports/status/TRACKING_ID", "host": ["{{baseUrl}}"], "path": ["reports", "status", "TRACKING_ID"]}
+          }
+        },
+        {
+          "name": "Get Admin Analytics",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "{{baseUrl}}/reports/analytics", "host": ["{{baseUrl}}"], "path": ["reports", "analytics"]}
+          }
+        },
+        {
+          "name": "Get All Org Reports (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "{{baseUrl}}/reports/admin/all", "host": ["{{baseUrl}}"], "path": ["reports", "admin", "all"]}
+          }
+        },
+        {
+          "name": "Get Report Details (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "{{baseUrl}}/reports/REPORT_ID", "host": ["{{baseUrl}}"], "path": ["reports", "REPORT_ID"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get Reports",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "{{baseUrl}}/admin/reports", "host": ["{{baseUrl}}"], "path": ["admin", "reports"]}
+          }
+        },
+        {
+          "name": "Get Single Report",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "{{baseUrl}}/admin/reports/REPORT_ID", "host": ["{{baseUrl}}"], "path": ["admin", "reports", "REPORT_ID"]}
+          }
+        }
+      ]
+    }
+  ]
+}

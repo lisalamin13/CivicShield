@@ -1,62 +1,90 @@
-const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
 
-const UserSchema = new mongoose.Schema({
+const refreshTokenSchema = new mongoose.Schema(
+  {
+    tokenHash: { type: String, required: true },
+    userAgent: String,
+    expiresAt: Date,
+  },
+  { _id: false },
+);
+
+const userSchema = new mongoose.Schema(
+  {
     name: {
-        type: String,
-        required: [true, 'Please add a name']
+      type: String,
+      required: true,
+      trim: true,
     },
     email: {
-        type: String,
-        required: [true, 'Please add an email'],
-        unique: true,
-        match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please add a valid email']
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+      unique: true,
+    },
+    phone: {
+      type: String,
+      trim: true,
+      index: true,
     },
     password: {
-        type: String,
-        required: [true, 'Please add a password'],
-        minlength: 6,
-        select: false // This prevents the password from being returned in API calls by default
+      type: String,
+      required: true,
+      minlength: 8,
+      select: false,
     },
     role: {
-        type: String,
-        enum: ['SuperAdmin', 'OrgAdmin', 'DeptHead', 'reporter', 'user'],
-        default: 'reporter'
+      type: String,
+      enum: ['super_admin', 'org_admin', 'investigator', 'staff', 'reporter'],
+      default: 'reporter',
+      index: true,
     },
-   organization: {
-    type: String,
-    ref: 'Organization', 
-    required: true
-},
-    createdAt: {
-        type: Date,
-        default: Date.now
-    }
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      default: null,
+      index: true,
+    },
+    department: String,
+    avatarUrl: String,
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    isPhoneVerified: {
+      type: Boolean,
+      default: false,
+    },
+    refreshTokens: {
+      type: [refreshTokenSchema],
+      select: false,
+      default: [],
+    },
+    resetPasswordTokenHash: {
+      type: String,
+      select: false,
+    },
+    resetPasswordExpiresAt: Date,
+    lastLoginAt: Date,
+  },
+  {
+    timestamps: true,
+  },
+);
+
+userSchema.pre('save', async function hashPassword(next) {
+  if (!this.isModified('password')) {
+    return next();
+  }
+
+  this.password = await bcrypt.hash(this.password, 12);
+  return next();
 });
 
-// Encrypt password using bcrypt before saving to database
-UserSchema.pre('save', async function(next) {
-    if (!this.isModified('password')) {
-        next();
-    }
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-});
-
-
-// Sign JWT and return
-UserSchema.methods.getSignedJwtToken = function() {
-    const jwt = require('jsonwebtoken');
-    return jwt.sign(
-        { id: this._id, role: this.role }, 
-        process.env.JWT_SECRET, 
-        { expiresIn: '30d' }
-    );
+userSchema.methods.comparePassword = function comparePassword(candidatePassword) {
+  return bcrypt.compare(candidatePassword, this.password);
 };
 
-// Match user entered password to hashed password in database
-UserSchema.methods.matchPassword = async function(enteredPassword) {
-    const bcrypt = require('bcryptjs');
-    return await bcrypt.compare(enteredPassword, this.password);
-};
-module.exports = mongoose.model('User', UserSchema);
+module.exports = mongoose.model('User', userSchema);
